@@ -25,8 +25,12 @@ description: |
   Never writes to git. Never overwrites prior decision logs. Never dumps noise.
   Staleness is evidence-driven, not clock-driven — a dormant project's memories
   stay fresh; a fast-moving project's memories become suspect on first recall.
-metadata:
-  version: 2.0.0
+license: MIT
+compatibility:
+  - claude-code
+  - codex-cli
+  - opencode
+  - vercel-agent
 allowed-tools:
   - Read
   - Write
@@ -34,6 +38,10 @@ allowed-tools:
   - Bash
   - Glob
   - Grep
+metadata:
+  version: 2.0.0
+  repository: https://github.com/kurosaki-sol/Handoff
+  specification: https://agentskills.io/specification
 ---
 
 # Handoff — Session End Persistence
