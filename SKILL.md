@@ -1,30 +1,6 @@
 ---
 name: handoff
-description: |
-  Three-phase session handoff combining reusable-learning extraction, persistent memory,
-  and project state dump. Use when: (1) context window is getting low (~85% used),
-  (2) user is about to /clear or close the session, (3) user says "handoff", "brain-dump",
-  "save state", "bilan", or similar, (4) long complex session that would be painful to lose,
-  (5) end of a meaningful work unit (PR batch shipped, feature done, audit complete).
-
-  Phase A — EXTRACT reusable learnings into the persistent memory system
-  (~/.claude/projects/<project>/memory/) so they auto-load into the next session.
-  Quality-gated: only non-obvious, verified, specific discoveries. Memories include
-  staleness metadata (anchors, volatility, state) so future sessions can tell the
-  difference between "still true" and "written 6 months ago, probably rotten".
-
-  Phase B — PERSIST a dense single-file HANDOFF.md in the project directory
-  containing active work state: branches, PRs, TODOs, decisions, open questions,
-  risks. Optimized for a cold reader (fresh session or teammate) to resume in under
-  60 seconds.
-
-  Phase C — OPTIONALLY update the project's CLAUDE.md if the codebase has one,
-  appending only durable high-signal facts (new architecture decisions, shifts in
-  threat model, patterns validated by the team).
-
-  Never writes to git. Never overwrites prior decision logs. Never dumps noise.
-  Staleness is evidence-driven, not clock-driven — a dormant project's memories
-  stay fresh; a fast-moving project's memories become suspect on first recall.
+description: Three-phase session handoff for preserving reusable learnings, active project state, and durable project facts. Use when context is nearly full, the user is about to clear or close the session, says "handoff", "brain-dump", "save state", "bilan", or similar, or a meaningful work unit has just finished. Writes evidence-aware memories and HANDOFF.md without committing to git.
 license: MIT
 compatibility:
   - claude-code
