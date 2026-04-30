@@ -24,13 +24,13 @@ metadata:
 
 ## Problem
 
-Long Claude Code sessions accumulate three kinds of value that die on `/clear`:
+Long agent sessions accumulate three kinds of value that die on `/clear`, `/compact`, or a fresh terminal:
 
 1. **Reusable learnings** — non-obvious debugging techniques, workarounds, gotchas that help across *any* future project.
 2. **Project state** — branches in flight, open PRs, blockers, TODOs. Painful to reconstruct from git log.
 3. **Durable project facts** — architecture decisions, threat model clarifications, team preferences the codebase can't express.
 
-On top of that, memories **rot**: a memory written 6 months ago may describe a reality that no longer exists. The worst failure isn't a long prompt; it's Claude confidently using stale info as if it were current. This skill tracks enough metadata per memory that future sessions can distinguish `fresh` from `suspect` from `stale` **on evidence**, not on calendar age.
+On top of that, memories **rot**: a memory written 6 months ago may describe a reality that no longer exists. The worst failure isn't a long prompt; it's an agent confidently using stale info as if it were current. This skill tracks enough metadata per memory that future sessions can distinguish `fresh` from `suspect` from `stale` **on evidence**, not on calendar age.
 
 ## Trigger conditions
 
@@ -51,12 +51,24 @@ Don't invoke for trivial sessions, or mid-task when the user just needs context 
 Before writing anything:
 
 - **Working directory + git state** — `pwd`, `git rev-parse --show-toplevel 2>/dev/null` (no git → non-repo handling applies), `git rev-parse HEAD 2>/dev/null` for each relevant repo.
-- **Existing CLAUDE.md** — read if present.
+- **Existing agent bootstrap files** — read `AGENTS.md` and `CLAUDE.md` if present.
 - **Existing HANDOFF.md** — read; augment, don't overwrite.
-- **Existing memory dir** — `~/.claude/projects/<slug>/memory/`; read `MEMORY.md` index.
+- **Existing memory dirs** — check agent-specific memory locations, especially `~/.claude/projects/<slug>/memory/` and `~/.codex/memories/`; read indexes only when present and relevant.
 - **Session summary** — what was done, decided, shipped, blocked.
 
-Decide which phases apply: Phase A if non-obvious learnings exist; Phase B always if in-flight work; Phase C only if a team-owned CLAUDE.md can reasonably absorb a durable insight (never in a fork you'll PR against).
+Decide which phases apply: Phase A if non-obvious learnings exist; Phase B always if in-flight work; Phase C if agent bootstrap files can make future resume safer without polluting a repo.
+
+### Portability model — one canon, thin adapters
+
+`HANDOFF.md` is the canonical artifact. It must be enough for a cold human, Claude Code, Codex CLI, OpenCode, or another compatible agent to resume without relying on hidden context.
+
+Agent-specific files are adapters:
+
+- **Codex CLI** — prefer `AGENTS.md` as the reliable project bootstrap. It should point the next Codex session at `HANDOFF.md` and list only durable rules. Do not assume Codex will auto-load a prior chat after `/clear`.
+- **Claude Code** — use `CLAUDE.md` when the repo already owns one, plus Claude's project memory directory when useful.
+- **Other agents** — keep them on the `HANDOFF.md` path unless their documented bootstrap file is present.
+
+Never maintain separate competing handoff narratives. If an adapter disagrees with `HANDOFF.md`, update the adapter to point back to the canon.
 
 ---
 
@@ -70,7 +82,11 @@ For each candidate learning, pass the quality gates:
 - [ ] **Verified** — confirmed during the session
 - [ ] **Not already in memory** — check `MEMORY.md` first; update in place if it exists
 
-Files go in `~/.claude/projects/<project-slug>/memory/` (auto-loaded every future session in that directory). Two steps per entry: write the file, add an index pointer to `MEMORY.md`.
+Persistent memory is agent-specific. Write only memories that pass the gates, and avoid pretending every agent has the same recall behavior:
+
+- **Claude Code**: files go in `~/.claude/projects/<project-slug>/memory/`. Two steps per entry: write the file, add an index pointer to `MEMORY.md`.
+- **Codex CLI**: if Codex memory is available in the environment, mirror only durable, compact memories into `~/.codex/memories/` using the same schema. Still write `HANDOFF.md` and `AGENTS.md`; they are the reliable resume path after `/clear`.
+- **Unknown agent**: skip hidden memory unless the user or environment documents a location. Put resume-critical facts in `HANDOFF.md`.
 
 ### A.1 — The memory schema (v2)
 
@@ -162,7 +178,7 @@ Do extract:
 
 ### A.6 — Reading memories in future sessions (how they should be used)
 
-The skill `handoff` writes; but the session that reads must do so safely. The rules I (Claude) follow when a memory is loaded:
+The skill `handoff` writes; but the session that reads must do so safely. The rules the next agent should follow when a memory is loaded:
 
 1. **Filter by relevance** — only pull memories the current turn plausibly needs. Don't verify unused ones.
 2. **For each recalled memory, check its pin**:
@@ -255,9 +271,15 @@ Key files + purpose. Skip if `git log` covers it.
 ## Resume script for next session
 
 1. Read this file top to bottom
-2. `git log --oneline main..origin/main` on each repo
-3. Check upstream PR statuses
-4. Confirm next P0 with user
+2. Read `AGENTS.md` / `CLAUDE.md` if present
+3. `git status --short --branch` on each repo
+4. Check upstream PR statuses when relevant
+5. Confirm next P0 with user
+
+## Resume prompts
+
+- **Codex:** `Reprends ce repo depuis HANDOFF.md. Lis AGENTS.md puis fais git status avant d'agir.`
+- **Claude:** `Resume from HANDOFF.md and project memory. Read CLAUDE.md if present, then confirm the next P0.`
 ```
 
 **Rules for Phase B**:
@@ -269,12 +291,37 @@ Key files + purpose. Skip if `git log` covers it.
 
 ---
 
-## Phase C — Optional: update the project's CLAUDE.md
+## Phase C — Optional: update agent bootstrap files
 
-Only if BOTH are true:
+Bootstrap files are adapters, not the handoff itself. Keep them short and durable.
 
-- A `CLAUDE.md` already exists in the project
-- This session produced a **durable, high-signal** insight worth adding
+### C.1 — `AGENTS.md` for Codex CLI
+
+Create or update `AGENTS.md` when Codex compatibility matters and one of these is true:
+
+- The user explicitly wants resume-after-`/clear` behavior in Codex.
+- The project has a `HANDOFF.md` but no Codex bootstrap.
+- The session produced durable operating rules a future Codex agent must obey.
+
+Minimal template:
+
+```markdown
+# Agent Instructions
+
+- On resume, read `HANDOFF.md` before making changes.
+- Treat `HANDOFF.md` as the canonical project state; this file only contains durable operating rules.
+- Run `git status --short --branch` before editing.
+- Do not commit secrets, tokens, cookies, API keys, or local env files.
+```
+
+Add project-specific durable bullets only when they are stable and high-signal. Do not copy the whole handoff into `AGENTS.md`.
+
+### C.2 — `CLAUDE.md` for Claude Code
+
+Update `CLAUDE.md` only if BOTH are true:
+
+- A `CLAUDE.md` already exists in the project, or the user explicitly asks for one.
+- This session produced a **durable, high-signal** insight worth adding.
 
 **What qualifies**: new architecture pattern validated by the team; threat model clarification; adopted convention that would help future sessions; updated "current state" / "last updated" fields if that pattern exists.
 
@@ -282,10 +329,11 @@ Only if BOTH are true:
 
 **Rules for Phase C**:
 
-- **Preserve everything else.** Merge, don't overwrite.
+- **Preserve everything else.** Merge, don't overwrite existing `AGENTS.md` or `CLAUDE.md`.
 - **Match existing style.** French → French. Terse bullets → don't write paragraphs.
 - **No diff for its own sake.** If nothing qualifies, skip the phase and say so in the report.
-- **Never touch CLAUDE.md in a fork** if the upstream owns it — it leaks into PR diffs.
+- **Never touch team bootstrap files in a fork** if the upstream owns them — it leaks into PR diffs.
+- **Keep adapters thin.** They should point to `HANDOFF.md`, not duplicate it.
 
 ---
 
@@ -294,17 +342,17 @@ Only if BOTH are true:
 Before reporting done:
 
 1. Phase A: every new memory file has a matching `MEMORY.md` entry; required frontmatter (`name`, `description`, `type`, `volatility`, `state`, `created_at`) is present; `pin.type` is set correctly for the memory's scenario; no orphans.
-2. Phase B: HANDOFF.md exists, is scannable, contains concrete references (file:line, commit hashes, branch names), not hand-wavy language.
-3. Phase C: if CLAUDE.md was modified, the diff is <20 lines and existing content preserved verbatim.
+2. Phase B: HANDOFF.md exists, is scannable, contains concrete references (file:line, commit hashes, branch names), resume script, and Codex/Claude resume prompts.
+3. Phase C: if `AGENTS.md` or `CLAUDE.md` was modified, the diff is small and existing content preserved verbatim.
 4. No git state was changed. No `git add`, `commit`, `push`, `reset`, `checkout` by this skill.
 
 ## Report to the user
 
 - **Phase A (memory):** list new memory files with `volatility` + `pin.type` per entry. If nothing qualified: "no durable learnings this session."
 - **Phase B (HANDOFF.md):** path + word count + section headers. If augmented: what was preserved.
-- **Phase C (CLAUDE.md):** changed lines with location, or "skipped — no durable insight."
+- **Phase C (bootstrap):** changed `AGENTS.md` / `CLAUDE.md` lines with location, or "skipped — no durable insight."
 - **Migration note** if legacy memories (pre-v2 schema) were touched: which ones, whether metadata was added.
-- Confirm: safe to `/clear`. Next session resume path: memory auto-loads → read HANDOFF.md → `git status` → confirm P0 with user.
+- Confirm: safe to `/clear`. Next session resume path: read bootstrap file if present → read `HANDOFF.md` → `git status` → confirm P0 with user.
 
 ## Migrating legacy memories (v1 → v2)
 
@@ -317,6 +365,7 @@ Memories written with v1 of this skill lack the staleness schema (`volatility`, 
 ## Rules (hard constraints)
 
 - Never delete existing useful content from CLAUDE.md, HANDOFF.md, or memory. Merge.
+- Never delete existing useful content from AGENTS.md. Merge.
 - "Decisions made" entries are append-only.
 - Never write memory entries that duplicate existing ones. Update in place.
 - Never invoke git commands that change state (`add`, `commit`, `push`, `reset`, `checkout`).
@@ -327,8 +376,8 @@ Memories written with v1 of this skill lack the staleness schema (`volatility`, 
 
 ## Notes
 
-- **Phase A** memory is global to the project directory (auto-loaded via the memory system).
+- **Phase A** memory is agent-specific. Claude may auto-load project memory; Codex should still rely on `AGENTS.md` + `HANDOFF.md` as the explicit resume path.
 - **Phase B** HANDOFF.md is local to the project — commit or gitignore per user preference.
-- **Phase C** CLAUDE.md is team-facing — be conservative, only append durable insights.
+- **Phase C** bootstrap files are team-facing — be conservative, only append durable insights.
 - **Staleness check** is lazy — it happens when memories are recalled in a future session, not at write-time. This skill just makes sure the evidence is there for the future check to work.
 - If the user ever says "purge memory for X" or "we don't do Y anymore", treat those as hard overrides: mark every memory with matching `domain_tags` as `contested` immediately, don't wait for lazy recall.

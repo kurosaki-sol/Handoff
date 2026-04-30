@@ -53,6 +53,27 @@ shows drift on the paths they pinned.
 
 ---
 
+## Portability model
+
+`HANDOFF.md` is the canonical source of truth. It must be enough for a
+cold human, Claude Code, Codex CLI, OpenCode, or another compatible
+agent to resume without hidden context.
+
+Agent-specific files are deliberately thin adapters:
+
+- **Codex CLI** uses `AGENTS.md` as the reliable project bootstrap. It
+  should point the next Codex session at `HANDOFF.md` and keep only
+  durable operating rules.
+- **Claude Code** uses `CLAUDE.md` when a project already owns one, plus
+  Claude's project memory directory when useful.
+- **Other agents** should follow `HANDOFF.md` unless they document a
+  specific bootstrap file.
+
+The rule is simple: one handoff narrative, many loaders. If an adapter
+disagrees with `HANDOFF.md`, fix the adapter.
+
+---
+
 ## What it does
 
 When you invoke it (typing `handoff`, `brain-dump`, `save state`,
@@ -81,11 +102,13 @@ minute. Template includes status-at-a-glance, PRs in flight, decisions
 made (append-only log), open questions, prioritized TODOs, deploy
 risks, and a resume script for the next session.
 
-### Phase C — CLAUDE.md / AGENTS.md (optional)
+### Phase C — AGENTS.md / CLAUDE.md (optional)
 
-Only runs when a durable, high-signal insight genuinely belongs in the
-team-facing context file. Skipped otherwise — it won't pollute the
-team's diff for the sake of pollution.
+Creates or updates thin agent bootstrap files when they make future
+resume safer. For Codex, that usually means an `AGENTS.md` pointer to
+`HANDOFF.md`. For Claude, that usually means a small `CLAUDE.md` update
+only when the project already owns one. Skipped otherwise — it won't
+pollute the team's diff for the sake of pollution.
 
 ---
 
@@ -162,6 +185,33 @@ format — no agent-specific fields are required.
 ---
 
 ## Usage examples
+
+### Codex resume after `/clear`
+
+From the project root:
+
+```text
+Reprends ce repo depuis HANDOFF.md. Lis AGENTS.md puis fais git status avant d'agir.
+```
+
+For robust Codex resume behavior, keep a minimal `AGENTS.md` in the repo:
+
+```markdown
+# Agent Instructions
+
+- On resume, read `HANDOFF.md` before making changes.
+- Treat `HANDOFF.md` as the canonical project state; this file only contains durable operating rules.
+- Run `git status --short --branch` before editing.
+- Do not commit secrets, tokens, cookies, API keys, or local env files.
+```
+
+### Claude resume after `/clear`
+
+From the project root:
+
+```text
+Resume from HANDOFF.md and project memory. Read CLAUDE.md if present, then confirm the next P0.
+```
 
 See [`examples/`](./examples/) for:
 
@@ -253,10 +303,10 @@ A handful of choices that might read as surprising:
   reversed produces a **new** entry that supersedes — the history is
   preserved for audit.
 
-- **Phase C is pessimistic by default.** Editing a team's `CLAUDE.md`
-  pollutes their diffs, so the skill only touches it when the insight
-  is genuinely durable and high-signal. Most sessions end with phase C
-  skipped, and that's the right default.
+- **Phase C is pessimistic by default.** Editing a team's `AGENTS.md`
+  or `CLAUDE.md` pollutes their diffs, so the skill only touches them
+  when the insight is genuinely durable and high-signal. Most sessions
+  end with phase C skipped, and that's the right default.
 
 - **No git writes.** The skill only writes files. Commits, pushes,
   branch ops are all left to the user — the skill is compatible with
@@ -267,18 +317,20 @@ A handful of choices that might read as surprising:
 ## FAQ
 
 **How is this different from `CLAUDE.md` / `AGENTS.md`?**
-Those are flat team-facing docs, read once at session start. `handoff`
-memories are typed, scoped to a project directory, and carry staleness
-metadata. Flat context files don't rot less than memories do — they
-just hide the rot. `handoff` surfaces it.
+Those are flat team-facing bootstrap docs, usually read once at session
+start. `handoff` treats them as thin loaders pointing at `HANDOFF.md`,
+then uses typed memories where the active agent supports them. Flat
+context files don't rot less than memories do — they just hide the rot.
+`handoff` surfaces it.
 
 **How is this different from `brain-dump`?**
 `brain-dump` writes Phase A as **global** skills in `~/.claude/skills/`.
-`handoff` writes Phase A as **project-scoped** memories in
-`~/.claude/projects/<slug>/memory/`. The latter auto-loads in the
-project it was learned in and stays out of unrelated projects. Also,
-`brain-dump` has no staleness tracking; `handoff`'s core contribution
-is exactly that.
+`handoff` writes Phase A as **project-scoped or agent-scoped**
+memories where supported, and keeps `HANDOFF.md` as the portable canon.
+For Claude Code, that means `~/.claude/projects/<slug>/memory/`; for
+Codex, it means an explicit `AGENTS.md` + `HANDOFF.md` resume path with
+optional Codex memory mirroring. Also, `brain-dump` has no staleness
+tracking; `handoff`'s core contribution is exactly that.
 
 **Does it work for agents that don't auto-load skills directories?**
 Yes. For agents where the skill format isn't natively consumed, point
